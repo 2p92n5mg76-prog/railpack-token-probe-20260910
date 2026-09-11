@@ -1,0 +1,18 @@
+name: Validate Ably SDK OIDC trust boundary
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  probe:
+    permissions:
+      contents: read
+      deployments: write
+      id-token: write
+    uses: ably/features/.github/workflows/sdk-features.yml@main
+    with:
+      repository-name: ably-pubsub-dotnet
+    secrets:
+      ABLY_AWS_ACCOUNT_ID_SDK: ${{ secrets.ABLY_TARGET_ACCOUNT_ID }}
